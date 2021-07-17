@@ -123,10 +123,6 @@ export function billboardHandler(state) {
   getStore().commit('setBillboard', state)
 }
 
-export function tKeyHandler(state) {
-  getStore().commit('setTKey', JSON.parse(JSON.stringify(state)))
-}
-
 export function walletConnectHandler(state) {
   getStore().commit('setWCConnectorSession', state)
 }
@@ -137,4 +133,8 @@ export function encryptionPublicKeyHandler({ unapprovedEncryptionPublicKeyMsgs }
 
 export function unapprovedDecryptMsgsHandler({ unapprovedDecryptMsgs }) {
   getStore().commit('setUnapprovedDecryptMsgs', unapprovedDecryptMsgs)
+}
+
+export function announcemenstHandler(state) {
+  getStore().commit('setAnnouncements', state)
 }

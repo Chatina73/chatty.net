@@ -8,9 +8,13 @@
         <QuickAddress />
       </div>
     </div>
-    <v-layout wrap mx-n4 :class="[contractType === CONTRACT_TYPE_ERC721 && $vuetify.breakpoint.xsOnly ? 'mt-0' : 'mt-7']">
+    <v-layout
+      wrap
+      mx-n4
+      :class="[(contractType === CONTRACT_TYPE_ERC721 || contractType === CONTRACT_TYPE_ERC1155) && $vuetify.breakpoint.xsOnly ? 'mt-0' : 'mt-7']"
+    >
       <v-flex
-        v-if="contractType !== CONTRACT_TYPE_ERC721 && $vuetify.breakpoint.smAndDown"
+        v-if="contractType !== CONTRACT_TYPE_ERC721 && contractType !== CONTRACT_TYPE_ERC1155 && $vuetify.breakpoint.smAndDown"
         :class="[{ 'mb-4': $vuetify.breakpoint.smOnly }]"
         px-4
         xs12
@@ -190,7 +194,7 @@
                 <div class="mb-2">
                   <span class="body-2">{{ t('walletTransfer.youSend') }}</span>
                   <a
-                    v-if="contractType !== CONTRACT_TYPE_ERC721 && !isSendAll"
+                    v-if="contractType !== CONTRACT_TYPE_ERC721 && contractType !== CONTRACT_TYPE_ERC1155 && !isSendAll"
                     id="send-all-btn"
                     class="float-right torusBrand1--text body-2"
                     @click="sendAll"
@@ -202,7 +206,7 @@
                   </a>
                 </div>
                 <v-select
-                  v-if="contractType === CONTRACT_TYPE_ERC721"
+                  v-if="contractType === CONTRACT_TYPE_ERC721 || contractType === CONTRACT_TYPE_ERC1155"
                   v-model="assetSelected"
                   :items="collectibleSelected.assets"
                   outlined
@@ -220,7 +224,7 @@
                   </template>
                 </v-select>
                 <v-text-field
-                  v-if="contractType !== CONTRACT_TYPE_ERC721"
+                  v-if="contractType !== CONTRACT_TYPE_ERC721 && contractType !== CONTRACT_TYPE_ERC1155"
                   id="you-send"
                   ref="youSend"
                   :hint="
@@ -266,10 +270,39 @@
                     {{ $refs.youSend && $refs.youSend.errorBucket.length === 0 ? props.message : t(props.message) }}
                   </template>
                 </v-text-field>
+                <v-text-field
+                  v-if="contractType === CONTRACT_TYPE_ERC1155 && assetSelected.tokenBalance > 1"
+                  id="you-send-nft"
+                  ref="youSendNft"
+                  type="number"
+                  outlined
+                  required
+                  :value="erc1155DisplayAmount"
+                  :rules="[rules.required, lesserThan, isWholeNumber, moreThanZero]"
+                  aria-label="Amount you send"
+                  :error-messages="sendAmountError"
+                  @change="onChangeErc1155DisplayAmount"
+                >
+                  <template #append>
+                    <v-btn
+                      id="coin-mode-btn"
+                      small
+                      class="send-mode mr-2"
+                      :class="!!toggle_exclusive ? `torus-btn1 ${$vuetify.theme.isDark ? 'torusGray3--text' : 'torusGray1--text'}` : 'active'"
+                      :disabled="true"
+                      :outlined="true"
+                    >
+                      {{ assetSelected && assetSelected.name }}
+                    </v-btn>
+                  </template>
+                  <template #message="props">
+                    {{ $refs.youSendNft && $refs.youSendNft.errorBucket.length === 0 ? props.message : t(props.message) }}
+                  </template>
+                </v-text-field>
               </v-flex>
               <TransactionSpeedSelect
                 :reset-speed="resetSpeed"
-                :symbol="contractType !== CONTRACT_TYPE_ERC721 ? selectedItem.symbol : networkType.ticker"
+                :symbol="contractType !== CONTRACT_TYPE_ERC721 && contractType !== CONTRACT_TYPE_ERC1155 ? selectedItem.symbol : networkType.ticker"
                 :contract-type="contractType"
                 :network-ticker="networkType.ticker"
                 :gas="gas"
@@ -281,9 +314,9 @@
                 :network-host="networkType.host"
                 @onSelectSpeed="onSelectSpeed"
               />
-              <v-flex v-if="contractType === CONTRACT_TYPE_ERC721" xs12 mb-6 class="text-right">
+              <v-flex v-if="contractType === CONTRACT_TYPE_ERC721 || contractType === CONTRACT_TYPE_ERC1155" xs12 mb-6 class="text-right">
                 <div class="text-subtitle-2">{{ t('walletTransfer.totalCost') }}</div>
-                <div class="headline text_2--text">{{ getEthAmount(gas, activeGasPrice) }} ETH</div>
+                <div class="headline text_2--text">{{ getEthAmount(gas, activeGasPrice) }} {{ networkType.ticker }}</div>
                 <div class="caption text_2--text">{{ gasPriceInCurrency }} {{ selectedCurrency }}</div>
               </v-flex>
               <v-flex v-else xs12 mb-6 class="text-right">
@@ -316,15 +349,23 @@
                     :converted-amount="
                       convertedAmount
                         ? `~ ${convertedAmount} ${
-                            !!toggle_exclusive ? (contractType === CONTRACT_TYPE_ERC721 ? '' : selectedItem.symbol) : selectedCurrency
+                            !!toggle_exclusive
+                              ? contractType === CONTRACT_TYPE_ERC721 || contractType === CONTRACT_TYPE_ERC1155
+                                ? ''
+                                : selectedItem.symbol
+                              : selectedCurrency
                           }`
                         : ''
                     "
                     :display-amount="`${displayAmount} ${
-                      !toggle_exclusive ? (contractType === CONTRACT_TYPE_ERC721 ? '' : selectedItem.symbol) : selectedCurrency
+                      !toggle_exclusive
+                        ? contractType === CONTRACT_TYPE_ERC721 || contractType === CONTRACT_TYPE_ERC1155
+                          ? ''
+                          : selectedItem.symbol
+                        : selectedCurrency
                     }`"
-                    :asset-selected="contractType === CONTRACT_TYPE_ERC721 ? assetSelected : {}"
-                    :is-non-fungible-token="contractType === CONTRACT_TYPE_ERC721"
+                    :asset-selected="contractType === CONTRACT_TYPE_ERC721 || contractType === CONTRACT_TYPE_ERC1155 ? assetSelected : {}"
+                    :is-non-fungible-token="contractType === CONTRACT_TYPE_ERC721 || contractType === CONTRACT_TYPE_ERC1155"
                     :speed-selected="timeTaken"
                     :transaction-fee="gasPriceInCurrency"
                     :transaction-fee-eth="getEthAmount(gas, activeGasPrice)"
@@ -345,7 +386,7 @@
           </v-card>
         </v-form>
       </v-flex>
-      <v-flex v-if="contractType !== CONTRACT_TYPE_ERC721 && !$vuetify.breakpoint.smAndDown" px-4 xs6>
+      <v-flex v-if="contractType !== CONTRACT_TYPE_ERC721 && contractType !== CONTRACT_TYPE_ERC1155 && !$vuetify.breakpoint.smAndDown" px-4 xs6>
         <v-card class="elevation-1 pa-6">
           <div class="d-flex">
             <span class="body-2">{{ t('walletTransfer.accountBalance') }}</span>
@@ -396,7 +437,9 @@ import Resolution from '@unstoppabledomains/resolution'
 import BigNumber from 'bignumber.js'
 import erc721TransferABI from 'human-standard-collectible-abi'
 import erc20TransferABI from 'human-standard-token-abi'
+import isEqual from 'lodash.isequal'
 import log from 'loglevel'
+import { ERC1155 as erc1155Abi } from 'multi-token-standard-abi'
 import { QrcodeStream } from 'vue-qrcode-reader'
 import { mapGetters, mapState } from 'vuex'
 import { isAddress, toChecksumAddress } from 'web3-utils'
@@ -413,6 +456,7 @@ import torus from '../../torus'
 import {
   CONTRACT_TYPE_ERC20,
   CONTRACT_TYPE_ERC721,
+  CONTRACT_TYPE_ERC1155,
   CONTRACT_TYPE_ETH,
   ENS,
   ETH,
@@ -449,6 +493,7 @@ export default {
       tokenAddress: '0x',
       toEthAddress: '',
       amount: new BigNumber('0'),
+      erc1155DisplayAmount: new BigNumber('0'),
       displayAmount: new BigNumber('0'),
       convertedAmount: '',
       contactSelected: '',
@@ -485,6 +530,7 @@ export default {
       CONTRACT_TYPE_ETH,
       CONTRACT_TYPE_ERC20,
       CONTRACT_TYPE_ERC721,
+      CONTRACT_TYPE_ERC1155,
       logosUrl: config.logosUrl,
       sendAmountError: '',
       convertedVerifierId: '',
@@ -521,6 +567,9 @@ export default {
     randomName() {
       return `torus-${torus.instanceId}`
     },
+    finalCollectibles() {
+      return this.collectibles || []
+    },
     finalBalancesArray() {
       return this.tokenBalances.finalBalancesArray || []
     },
@@ -534,7 +583,7 @@ export default {
       return this.finalBalancesArray.find((x) => x.tokenAddress === this.selectedTokenAddress)
     },
     selectedItemDisplay() {
-      if (this.contractType !== CONTRACT_TYPE_ERC721) return this.selectedItem
+      if (this.contractType !== CONTRACT_TYPE_ERC721 && this.contractType !== CONTRACT_TYPE_ERC1155) return this.selectedItem
 
       return this.collectibleSelected
     },
@@ -586,8 +635,9 @@ export default {
     },
     tweetData() {
       const share = new URL('https://twitter.com/intent/tweet')
-      const selectedAsset = this.contractType === CONTRACT_TYPE_ERC721 ? this.assetSelected.name : this.selectedItem.symbol
-      const amount = `${this.contractType === CONTRACT_TYPE_ERC721 ? '' : this.displayAmount} ${
+      const selectedAsset =
+        this.contractType === CONTRACT_TYPE_ERC721 || this.contractType === CONTRACT_TYPE_ERC1155 ? this.assetSelected.name : this.selectedItem.symbol
+      const amount = `${this.contractType === CONTRACT_TYPE_ERC721 || this.contractType === CONTRACT_TYPE_ERC1155 ? '' : this.displayAmount} ${
         !this.toggle_exclusive ? selectedAsset : this.selectedCurrency
       }`
       const message = this.t('walletTransfer.transferTweet')
@@ -628,14 +678,14 @@ export default {
 
     this.contactSelected = this.toAddress
 
-    this.$watch('collectibles', (newValue, oldValue) => {
-      if (newValue !== oldValue && newValue?.length > 0) {
+    this.$watch('finalCollectibles', (newValue, oldValue) => {
+      if (!isEqual(newValue, oldValue) && newValue?.length > 0) {
         this.updateFieldsBasedOnRoute()
       }
     })
 
     const tokensUnwatch = this.$watch('finalBalancesArray', (newValue, oldValue) => {
-      if (newValue !== oldValue && newValue?.length > 0) {
+      if (!isEqual(newValue, oldValue) && newValue?.length > 0) {
         this.updateFieldsBasedOnRoute()
         tokensUnwatch()
       }
@@ -644,8 +694,9 @@ export default {
     this.updateFieldsBasedOnRoute()
 
     torus.nodeDetailManager
-      .getNodeDetails()
+      .getNodeDetails(false, true)
       .then((nodeDetails) => {
+        log.info('fetched node details', nodeDetails)
         this.nodeDetails = nodeDetails
       })
       .catch((error) => log.error(error))
@@ -679,6 +730,18 @@ export default {
         return this.$store.dispatch('getTwitterId', { nick, typeOfLogin })
       }
       return nick
+    },
+    async onChangeErc1155DisplayAmount(value) {
+      this.sendAmountError = ''
+      if (
+        (this.contractType === CONTRACT_TYPE_ERC1155 && BigNumber.isBigNumber(value) && !this.erc1155DisplayAmount.eq(value)) ||
+        !BigNumber.isBigNumber(value)
+      ) {
+        this.erc1155DisplayAmount = BigNumber.isBigNumber(value) ? value : new BigNumber(value || '0')
+        if (this.toEthAddress) {
+          this.gas = await this.calculateGas(this.toEthAddress)
+        }
+      }
     },
     async onChangeDisplayAmount(value) {
       this.sendAmountError = ''
@@ -723,7 +786,9 @@ export default {
           currency: this.selectedCurrency,
           currencyAmount: significantDigits(this.amount.times(this.getCurrencyTokenRate).toFormat(2)) || '',
           tokenImageUrl:
-            this.contractType !== CONTRACT_TYPE_ERC721 ? `${this.logosUrl}/${this.selectedItemDisplay.logo}` : this.selectedItemDisplay.logo,
+            this.contractType !== CONTRACT_TYPE_ERC721 || this.contractType !== this.CONTRACT_TYPE_ERC1155
+              ? `${this.logosUrl}/${this.selectedItemDisplay.logo}`
+              : this.selectedItemDisplay.image,
         }
         this.$store
           .dispatch('sendEmail', { emailObject })
@@ -732,12 +797,25 @@ export default {
       }
     },
     moreThanZero(value) {
+      if (this.contractType === CONTRACT_TYPE_ERC1155) {
+        return new BigNumber(value || '0').gte(new BigNumber('0')) || 'walletTransfer.invalidAmount'
+      }
       if (this.selectedItem) {
-        return new BigNumber(value || '0').gt(new BigNumber('0')) || 'walletTransfer.invalidAmount'
+        return new BigNumber(value || '0').gte(new BigNumber('0')) || 'walletTransfer.invalidAmount'
       }
       return ''
     },
+    isWholeNumber(value) {
+      const amount = new BigNumber(value || '0')
+      const fixedAmount = new BigNumber(amount.toFixed(0))
+      return fixedAmount.eq(amount) || 'walletTransfer.invalidAmount'
+    },
     lesserThan(value) {
+      if (this.contractType === CONTRACT_TYPE_ERC1155) {
+        const amount = new BigNumber(value || '0')
+        const balance = new BigNumber(this.assetSelected?.tokenBalance || '0')
+        return amount.lte(balance) || 'walletTransfer.insufficient'
+      }
       if (this.selectedItem) {
         let amount = new BigNumber(value || '0')
         if (this.toggle_exclusive === 1) {
@@ -818,7 +896,7 @@ export default {
               .times(new BigNumber(10).pow(new BigNumber(this.selectedItem.decimals)))
               .dp(0, BigNumber.ROUND_DOWN)
               .toString(16)}`
-            this.getTransferMethod(this.contractType, this.selectedAddress, toAddress, value)
+            this.getTransferMethod(this.contractType, toAddress, value)
               .estimateGas({ from: this.selectedAddress })
               .then((response) => {
                 log.info(response, 'gas')
@@ -829,7 +907,19 @@ export default {
                 resolve(new BigNumber('0'))
               })
           } else if (this.contractType === CONTRACT_TYPE_ERC721) {
-            this.getTransferMethod(this.contractType, this.selectedAddress, toAddress, this.assetSelected.tokenId)
+            this.getNftTransferMethod(this.contractType, this.selectedAddress, toAddress, this.assetSelected.tokenId)
+              .estimateGas({ from: this.selectedAddress })
+              .then((response) => {
+                resolve(new BigNumber(response || '0'))
+              })
+              .catch((error) => {
+                log.error(error)
+                resolve(new BigNumber('0'))
+              })
+          } else if (this.contractType === CONTRACT_TYPE_ERC1155) {
+            const val =
+              Number.parseInt(this.assetSelected.tokenBalance, 10) === 1 ? new BigNumber(this.assetSelected.tokenBalance) : this.erc1155DisplayAmount
+            this.getNftTransferMethod(this.contractType, this.selectedAddress, toAddress, this.assetSelected.tokenId, val)
               .estimateGas({ from: this.selectedAddress })
               .then((response) => {
                 resolve(new BigNumber(response || '0'))
@@ -843,21 +933,36 @@ export default {
       }
       return Promise.resolve(new BigNumber('0'))
     },
-    getTransferMethod(contractType, selectedAddress, toAddress, value) {
+    getTransferMethod(contractType, toAddress, value) {
       // For support of older ERC721
       if (Object.prototype.hasOwnProperty.call(OLD_ERC721_LIST, this.selectedTokenAddress.toLowerCase()) || contractType === CONTRACT_TYPE_ERC20) {
         const contractInstance = new torus.web3.eth.Contract(erc20TransferABI, this.selectedTokenAddress)
         return contractInstance.methods.transfer(toAddress, value)
       }
+
+      throw new Error('Invalid Contract Type')
+    },
+    getNftTransferMethod(contractType, selectedAddress, toAddress, tokenId, value = 1) {
+      if (contractType === CONTRACT_TYPE_ERC721 && Object.prototype.hasOwnProperty.call(OLD_ERC721_LIST, this.selectedTokenAddress.toLowerCase())) {
+        const contractInstance = new torus.web3.eth.Contract(erc20TransferABI, this.selectedTokenAddress)
+        return contractInstance.methods.transfer(toAddress, tokenId)
+      }
+
       if (contractType === CONTRACT_TYPE_ERC721) {
         const contractInstance = new torus.web3.eth.Contract(erc721TransferABI, this.selectedTokenAddress)
-        return contractInstance.methods.safeTransferFrom(selectedAddress, toAddress, value)
+        return contractInstance.methods.safeTransferFrom(selectedAddress, toAddress, tokenId)
       }
+
+      if (contractType === CONTRACT_TYPE_ERC1155) {
+        const contractInstance = new torus.web3.eth.Contract(erc1155Abi.abi, this.selectedTokenAddress)
+        return contractInstance.methods.safeTransferFrom(selectedAddress, toAddress, tokenId, value, '0x')
+      }
+
       throw new Error('Invalid Contract Type')
     },
     async selectedItemChanged(address, tokenId) {
       const foundInBalances = this.finalBalancesArray.find((token) => token.tokenAddress.toLowerCase() === address.toLowerCase())
-      const foundInCollectibles = this.collectibles.find((token) => token.address.toLowerCase() === address.toLowerCase())
+      const foundInCollectibles = this.finalCollectibles.find((token) => token.address.toLowerCase() === address.toLowerCase())
       if (foundInBalances) {
         this.tokenAddress = foundInBalances.tokenAddress
         this.contractType = foundInBalances.erc20 ? CONTRACT_TYPE_ERC20 : CONTRACT_TYPE_ETH
@@ -865,7 +970,7 @@ export default {
         this.assetSelected = {}
       } else if (foundInCollectibles) {
         this.tokenAddress = foundInCollectibles.address
-        this.contractType = CONTRACT_TYPE_ERC721
+        this.contractType = foundInCollectibles.standard
         this.collectibleSelected = foundInCollectibles
         if (foundInCollectibles.assets && foundInCollectibles.assets.length > 0) {
           this.assetSelected = tokenId
@@ -929,6 +1034,14 @@ export default {
           log.error(error)
         }
       }
+      if (
+        (this.contractType === CONTRACT_TYPE_ERC721 || (this.contractType === CONTRACT_TYPE_ERC1155 && this.assetSelected.tokenBalance === 1)) &&
+        !this.hasCustomGasLimit
+      ) {
+        this.gas = await this.calculateGas(toAddress)
+        this.updateTotalCost()
+      }
+
       return toAddress
     },
     async onTransferClick() {
@@ -944,10 +1057,13 @@ export default {
           return
         }
         this.toEthAddress = toAddress
-        if (!this.hasCustomGasLimit) {
+        if (
+          (this.contractType !== CONTRACT_TYPE_ERC721 || (this.contractType === CONTRACT_TYPE_ERC1155 && this.assetSelected.tokenBalance > 1)) &&
+          !this.hasCustomGasLimit
+        ) {
           this.gas = await this.calculateGas(toAddress)
+          this.updateTotalCost()
         }
-        this.updateTotalCost()
         this.confirmDialog = true
       }
     },
@@ -987,6 +1103,7 @@ export default {
       this.changeSelectedToCurrency(0)
     },
     async sendCoin() {
+      log.info('sending with gas price', this.activeGasPrice.toString())
       const toAddress = this.toEthAddress
       const fastGasPrice = `0x${this.activeGasPrice.times(new BigNumber(10).pow(new BigNumber(9))).toString(16)}`
       const customNonceValue = this.nonce >= 0 ? `0x${this.nonce.toString(16)}` : undefined
@@ -1032,7 +1149,7 @@ export default {
           .times(new BigNumber(10).pow(new BigNumber(this.selectedItem.decimals)))
           .dp(0, BigNumber.ROUND_DOWN)
           .toString(16)}`
-        this.getTransferMethod(this.contractType, this.selectedAddress, toAddress, value).send(
+        this.getTransferMethod(this.contractType, toAddress, value).send(
           {
             from: this.selectedAddress,
             gas: this.gas.eq(new BigNumber('0')) ? undefined : `0x${this.gas.toString(16)}`,
@@ -1062,7 +1179,38 @@ export default {
           }
         )
       } else if (this.contractType === CONTRACT_TYPE_ERC721) {
-        this.getTransferMethod(this.contractType, this.selectedAddress, toAddress, this.assetSelected.tokenId).send(
+        this.getNftTransferMethod(this.contractType, this.selectedAddress, toAddress, this.assetSelected.tokenId).send(
+          {
+            from: this.selectedAddress,
+            gas: this.gas.eq(new BigNumber('0')) ? undefined : `0x${this.gas.toString(16)}`,
+            gasPrice: fastGasPrice,
+            customNonceValue,
+          },
+          (error, transactionHash) => {
+            if (error) {
+              const regEx = /user denied transaction signature/i
+              if (!error.message.match(regEx)) {
+                this.messageModalShow = true
+                this.messageModalType = MESSAGE_MODAL_TYPE_FAIL
+                this.messageModalTitle = this.t('walletTransfer.transferFailTitle')
+                this.messageModalDetails = this.t('walletTransfer.transferFailMessage')
+              }
+              log.error(error)
+            } else {
+              // Send email to the user
+              this.sendEmail(this.assetSelected.name, transactionHash)
+              this.etherscanLink = getEtherScanHashLink(transactionHash, this.networkType.host)
+              this.messageModalShow = true
+              this.messageModalType = MESSAGE_MODAL_TYPE_SUCCESS
+              this.messageModalTitle = this.t('walletTransfer.transferSuccessTitle')
+              this.messageModalDetails = this.t('walletTransfer.transferSuccessMessage')
+            }
+          }
+        )
+      } else if (this.contractType === CONTRACT_TYPE_ERC1155) {
+        const val =
+          Number.parseInt(this.assetSelected.tokenBalance, 10) === 1 ? new BigNumber(this.assetSelected.tokenBalance) : this.erc1155DisplayAmount
+        this.getNftTransferMethod(this.contractType, this.selectedAddress, toAddress, this.assetSelected.tokenId, val).send(
           {
             from: this.selectedAddress,
             gas: this.gas.eq(new BigNumber('0')) ? undefined : `0x${this.gas.toString(16)}`,
@@ -1099,6 +1247,7 @@ export default {
       this.$router.go(-1)
     },
     updateTotalCost() {
+      log.info(this.activeGasPrice.toString(), 'acg price')
       if (this.displayAmount.isZero() || this.activeGasPrice === '') {
         this.totalCost = '0'
         this.convertedTotalCost = '0'
@@ -1117,6 +1266,8 @@ export default {
       if (this.isSendAll) {
         this.sendAll()
       }
+
+      log.info(this.activeGasPrice.toString(), 'acg price 2')
 
       const gasPriceInEth = this.getEthAmount(this.gas, this.activeGasPrice)
       const gasPriceInCurrency = gasPriceInEth.times(this.currencyMultiplier)

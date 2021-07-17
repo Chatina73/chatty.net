@@ -18,14 +18,13 @@ import {
   TX_TYPED_MESSAGE,
 } from '../utils/enums'
 import { setSentryEnabled } from '../utils/sentry'
-import { getIFrameOriginObject, isPwa, storageAvailable } from '../utils/utils'
+import { getIFrameOriginObject, isMain, isPwa, storageAvailable } from '../utils/utils'
 import actions from './actions'
 import defaultGetters from './getters'
 import mutations from './mutations'
 import paymentActions from './PaymentActions'
 import preferencesActions from './preferencesActions'
 import defaultState from './state'
-import tKeyActions from './tKeyActions'
 
 const { baseRoute } = config
 
@@ -33,10 +32,10 @@ Vue.use(Vuex)
 
 let vuexPersist
 
-if (storageAvailable(isPwa ? 'localStorage' : 'sessionStorage')) {
+if (storageAvailable(isPwa || config.dappStorageKey ? 'localStorage' : 'sessionStorage')) {
   vuexPersist = new VuexPersistence({
-    key: 'torus-app',
-    storage: isPwa ? window.localStorage : window.sessionStorage,
+    key: config.dappStorageKey || 'torus-app',
+    storage: isPwa || config.dappStorageKey ? window.localStorage : window.sessionStorage,
     reducer: (state) => ({
       userInfo: state.userInfo,
       userInfoAccess: state.userInfoAccess,
@@ -54,6 +53,7 @@ if (storageAvailable(isPwa ? 'localStorage' : 'sessionStorage')) {
       crashReport: state.crashReport,
       locale: state.locale,
       billboard: state.billboard,
+      announcements: state.announcements,
       contacts: state.contacts,
       whiteLabel: state.whiteLabel,
       supportedNetworks: state.supportedNetworks,
@@ -63,7 +63,6 @@ if (storageAvailable(isPwa ? 'localStorage' : 'sessionStorage')) {
       tKeyOnboardingComplete: state.tKeyOnboardingComplete,
       defaultPublicAddress: state.defaultPublicAddress,
       tKeyStore: { ...state.tKeyStore, shareTransferRequests: [] },
-      tKeyExists: state.tKeyExists,
       wcConnectorSession: state.wcConnectorSession,
       postboxKey: state.postboxKey,
     }),
@@ -95,7 +94,6 @@ const VuexStore = new Vuex.Store({
     ...actions,
     ...paymentActions,
     ...preferencesActions,
-    ...tKeyActions,
     async showPopup({ state, commit }, { payload, request }) {
       const isTx = payload && typeof payload === 'object'
       const windowId = isTx ? payload.id : payload
@@ -111,7 +109,6 @@ const VuexStore = new Vuex.Store({
         network: state.networkType,
         whiteLabel: state.whiteLabel,
         selectedAddress: state.selectedAddress,
-        tKeyExists: state.tKeyExists,
       }
       if (isTx) {
         const txParameters = payload
@@ -134,7 +131,7 @@ const VuexStore = new Vuex.Store({
       }
       popupPayload.balance = fromWei(weiBalance.toString())
 
-      if (request.isWalletConnectRequest && window.location === window.parent.location && window.location.origin === config.baseUrl) {
+      if (request.isWalletConnectRequest && isMain) {
         const originObj = { href: '', hostname: '' }
         try {
           const peerMetaURL = new URL(torus.torusController.walletConnectController.getPeerMetaURL())
@@ -145,7 +142,7 @@ const VuexStore = new Vuex.Store({
         }
         popupPayload.origin = originObj
         commit('addConfirmModal', JSON.parse(JSON.stringify(popupPayload)))
-      } else if (window.location === window.parent.location && window.location.origin === config.baseUrl) {
+      } else if (isMain) {
         handleConfirm({ data: { txType: popupPayload.type, id: popupPayload.id } })
       } else if (popupPayload.type === TX_MESSAGE && isCustomSignedMessage(popupPayload.msgParams.msgParams)) {
         handleConfirm({ data: { txType: popupPayload.type, id: popupPayload.id } })

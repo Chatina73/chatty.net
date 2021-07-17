@@ -19,6 +19,7 @@ import {
   BSC_TESTNET_CODE,
   CONTRACT_TYPE_ERC20,
   CONTRACT_TYPE_ERC721,
+  CONTRACT_TYPE_ERC1155,
   DISCORD,
   EMAIL_PASSWORD,
   ENVIRONMENT_TYPE_FULLSCREEN,
@@ -90,6 +91,8 @@ const networkToNameMap = {
   [KOVAN_CODE]: KOVAN_DISPLAY_NAME,
   [GOERLI_CODE]: GOERLI_DISPLAY_NAME,
 }
+
+export class UserError extends Error {}
 
 export const getNetworkDisplayName = (key) => networkToNameMap[key]
 
@@ -254,6 +257,7 @@ export function addressSlicer(address = '') {
   if (address.length < 11) {
     return address
   }
+  if (typeof address !== 'string') return ''
   return `${address.slice(0, 5)}...${address.slice(-5)}`
 }
 
@@ -390,14 +394,14 @@ export const paymentProviders = {
     line1: 'Credit/ Debit Card',
     line2: '5% or 10 USD',
     line3: '$20,000/day, $50,000/mo',
-    line4: 'ETH',
+    line4: 'ETH, BNB',
     status: ACTIVE,
     logoExtension: PNG,
     supportPage: 'https://www.simplex.com/support/',
     minOrderValue: 50,
-    maxOrderValue: 20000,
+    maxOrderValue: 20_000,
     validCurrencies: ['USD', 'EUR'],
-    validCryptoCurrencies: ['ETH', 'DAI', 'USDC', 'USDT'],
+    validCryptoCurrencies: ['ETH', 'BNB'],
     includeFees: true,
     api: true,
     enforceMax: true,
@@ -406,14 +410,14 @@ export const paymentProviders = {
     line1: 'Credit/ Debit Card/ Apple Pay',
     line2: '4.5% or 5 USD',
     line3: '2,000€/day, 10,000€/mo',
-    line4: 'ETH, DAI, TUSD, USDC, USDT',
+    line4: 'ETH, DAI, TUSD, USDC, USDT, BNB, BUSD',
     status: ACTIVE,
     logoExtension: SVG,
     supportPage: 'https://help.moonpay.io/en/',
     minOrderValue: 24.99,
-    maxOrderValue: 50000,
+    maxOrderValue: 50_000,
     validCurrencies: ['USD', 'EUR', 'GBP', 'AUD', 'CAD', 'SGD', 'RUB'],
-    validCryptoCurrencies: ['ETH', 'DAI', 'TUSD', 'USDC', 'USDT'],
+    validCryptoCurrencies: ['ETH', 'DAI', 'TUSD', 'USDC', 'USDT', 'BNB_BSC', 'BUSD_BSC'],
     includeFees: true,
     api: true,
     enforceMax: false,
@@ -438,14 +442,14 @@ export const paymentProviders = {
     line1: 'Debit Card/ <br>Apple Pay/ Bank transfer',
     line2: '0.49% - 2.9%',
     line3: '5,000€/purchase, 20,000€/mo',
-    line4: 'ETH, DAI, USDC',
+    line4: 'ETH, DAI, USDC, BNB',
     status: ACTIVE,
     logoExtension: SVG,
     supportPage: 'https://instant.ramp.network/',
-    minOrderValue: 5,
-    maxOrderValue: 20000,
-    validCurrencies: ['EUR', 'GBP'],
-    validCryptoCurrencies: ['ETH', 'DAI', 'USDC'],
+    minOrderValue: 50,
+    maxOrderValue: 20_000,
+    validCurrencies: ['EUR', 'GBP', 'USD'],
+    validCryptoCurrencies: ['ETH', 'DAI', 'USDC', 'BSC_BNB'],
     includeFees: true,
     api: true,
     receiveHint: 'walletTopUp.receiveHintRamp',
@@ -540,7 +544,7 @@ export function selectChainId(network, store) {
   return standardNetworkId[network] || networkId.toString().startsWith('0x') ? networkId : `0x${Number.parseInt(networkId, 10).toString(16)}`
 }
 
-export const isMain = window.location === window.parent.location && window.location.origin === config.baseUrl
+export const isMain = window.self === window.top
 
 export const getIFrameOrigin = () => {
   const originHref = window.location.ancestorOrigins?.length > 0 ? window.location.ancestorOrigins[0] : document.referrer
@@ -552,7 +556,6 @@ export const getIFrameOriginObject = () => {
     const url = new URL(getIFrameOrigin())
     return { href: url.href, hostname: url.hostname }
   } catch {
-    log.error('invalid url')
     return { href: window.location.href, hostname: window.location.hostname }
   }
 }
@@ -578,19 +581,21 @@ export const getUserLanguage = () => {
 
 export const formatPastTx = (x, lowerCaseSelectedAddress) => {
   let totalAmountString = ''
-  if (x.type === CONTRACT_TYPE_ERC721) totalAmountString = x.symbol
+  if (x.type === CONTRACT_TYPE_ERC721 || x.type === CONTRACT_TYPE_ERC1155) totalAmountString = x.symbol
   else if (x.type === CONTRACT_TYPE_ERC20) totalAmountString = formatSmallNumbers(Number.parseFloat(x.total_amount), x.symbol, true)
   else totalAmountString = formatSmallNumbers(Number.parseFloat(x.total_amount), x.type_name, true)
   const currencyAmountString =
-    x.type === CONTRACT_TYPE_ERC721 || x.isEtherscan ? '' : formatSmallNumbers(Number.parseFloat(x.currency_amount), x.selected_currency, true)
+    x.type === CONTRACT_TYPE_ERC721 || x.type === CONTRACT_TYPE_ERC1155 || x.isEtherscan
+      ? ''
+      : formatSmallNumbers(Number.parseFloat(x.currency_amount), x.selected_currency, true)
   const finalObject = {
     id: x.created_at.toString(),
     date: new Date(x.created_at),
     from: x.from,
-    slicedFrom: addressSlicer(x.from),
+    slicedFrom: typeof x.from === 'string' ? addressSlicer(x.from) : '',
     to: x.to,
-    slicedTo: addressSlicer(x.to),
-    action: lowerCaseSelectedAddress === x.to.toLowerCase() ? ACTIVITY_ACTION_RECEIVE : ACTIVITY_ACTION_SEND,
+    slicedTo: typeof x.to === 'string' ? addressSlicer(x.to) : '',
+    action: lowerCaseSelectedAddress === x.to?.toLowerCase() || '' ? ACTIVITY_ACTION_RECEIVE : ACTIVITY_ACTION_SEND,
     totalAmount: x.total_amount,
     totalAmountString,
     currencyAmount: x.currency_amount,
@@ -778,4 +783,21 @@ export async function validateContractAddress(web3, address) {
     return true
   }
   return false
+}
+
+export async function validateImageUrl(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.src = url
+    if (img.complete) {
+      resolve(true)
+    } else {
+      img.addEventListener('load', () => {
+        resolve(true)
+      })
+      img.addEventListener('error', () => {
+        reject()
+      })
+    }
+  })
 }

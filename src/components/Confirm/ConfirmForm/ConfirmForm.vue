@@ -3,7 +3,7 @@
     <template v-if="type === TX_TRANSACTION">
       <v-layout pa-6 class="elevation-1">
         <v-flex text-center xs12>
-          <img class="home-link mr-1" alt="Torus Logo" width="70" :height="getLogo.isExternal ? 'inherit' : '17'" :src="getLogo.logo" />
+          <img class="home-link mr-1" alt="Torus Logo" :height="getLogo.isExternal ? 70 : 24" :src="getLogo.logo" />
           <div class="display-1 text_2--text">{{ t('dappTransfer.confirmation') }}</div>
         </v-flex>
       </v-layout>
@@ -38,7 +38,13 @@
       <v-layout mx-6 my-4 wrap>
         <v-flex xs3 class="pt-3">
           <div class="caption">
-            {{ t('walletTransfer.totalCost') }}
+            {{
+              ((contractType === CONTRACT_TYPE_ERC721 || contractType === CONTRACT_TYPE_ERC1155) &&
+                transactionCategory === COLLECTIBLE_METHOD_SAFE_TRANSFER_FROM) ||
+              (isSpecialContract && transactionCategory === TOKEN_METHOD_TRANSFER)
+                ? t('walletTransfer.collectibleId')
+                : t('walletTransfer.totalCost')
+            }}
           </div>
         </v-flex>
         <v-flex xs9>
@@ -47,6 +53,7 @@
       </v-layout>
       <v-layout mx-6 my-4 wrap>
         <TransactionSpeedSelect
+          :nonce="nonce"
           :gas="gasEstimate"
           :display-amount="contractType === CONTRACT_TYPE_ERC20 ? amountValue : value"
           :active-gas-price-confirm="gasPrice"
@@ -54,6 +61,7 @@
           :currency-multiplier="currencyMultiplier"
           :currency-multiplier-eth="currencyMultiplier"
           :contract-type="contractType"
+          :network-ticker="network.ticker"
           :symbol="SEND_ETHER_ACTION_KEY === transactionCategory ? network.ticker : selectedToken"
           :is-confirm="true"
           :network-host="network.host"
@@ -173,7 +181,7 @@
     >
       <v-layout py-6 class="elevation-1">
         <v-flex xs12 text-center>
-          <img class="home-link mr-1" alt="Torus Logo" width="70" :height="getLogo.isExternal ? 'inherit' : '17'" :src="getLogo.logo" />
+          <img class="home-link mr-1" alt="Torus Logo" :height="getLogo.isExternal ? 70 : 24" :src="getLogo.logo" />
           <div class="display-1 text_2--text">
             {{
               type === TX_GET_ENCRYPTION_KEY
@@ -316,19 +324,17 @@
 
 <script>
 import BigNumber from 'bignumber.js'
-import collectibleABI from 'human-standard-collectible-abi'
-import tokenABI from 'human-standard-token-abi'
 import log from 'loglevel'
 import VueJsonPretty from 'vue-json-pretty'
 import { mapActions, mapGetters } from 'vuex'
 import { fromWei, hexToNumber, toChecksumAddress } from 'web3-utils'
 
-import config from '../../../config'
 import {
   COLLECTIBLE_METHOD_SAFE_TRANSFER_FROM,
   CONTRACT_INTERACTION_KEY,
   CONTRACT_TYPE_ERC20,
   CONTRACT_TYPE_ERC721,
+  CONTRACT_TYPE_ERC1155,
   CONTRACT_TYPE_ETH,
   DEPLOY_CONTRACT_ACTION_KEY,
   SEND_ETHER_ACTION_KEY,
@@ -430,10 +436,13 @@ export default {
       userInfo: {},
       contractType: CONTRACT_TYPE_ETH,
       CONTRACT_TYPE_ERC20,
+      CONTRACT_TYPE_ERC721,
+      CONTRACT_TYPE_ERC1155,
       nonce: -1,
       decryptedData: {},
       encryptedMessage: '',
       showEncrypted: false,
+      isSpecialContract: false,
     }
   },
   computed: {
@@ -489,7 +498,7 @@ export default {
         case TOKEN_METHOD_TRANSFER_FROM:
           return `${this.amountDisplay(this.amountValue)} ${this.selectedToken}`
         case COLLECTIBLE_METHOD_SAFE_TRANSFER_FROM:
-          return `ID: ${this.amountValue}`
+          return `ID: ${this.amountValue} ${this.selectedToken}`
         case SEND_ETHER_ACTION_KEY:
         case CONTRACT_INTERACTION_KEY:
           return `${this.amountDisplay(this.value)} ${this.network.ticker}`
@@ -555,14 +564,14 @@ export default {
     },
   },
   mounted() {
+    window.$crisp.push(['do', 'chat:hide'])
     this.updateConfirmModal()
   },
   methods: {
     ...mapActions(['decryptMessage']),
     async updateConfirmModal() {
       if (!this.currentConfirmModal) return
-      const { type, msgParams, txParams, origin, balance, selectedCurrency, tokenRates, jwtToken, currencyData, network } =
-        this.currentConfirmModal || {}
+      const { type, msgParams, txParams, origin, balance, selectedCurrency, tokenRates, currencyData, network } = this.currentConfirmModal || {}
       this.selectedCurrency = selectedCurrency
       this.currencyData = currencyData
       this.balance = new BigNumber(balance)
@@ -592,21 +601,28 @@ export default {
         if (value) {
           finalValue = new BigNumber(fromWei(value.toString()))
         }
-        // Get ABI for method
         let txDataParameters = ''
-        if (contractParams.erc721) {
-          txDataParameters = collectibleABI.find((item) => item.name && item.name.toLowerCase() === transactionCategory) || ''
+        if (contractParams.isSpecial && transactionCategory.toLowerCase() === TOKEN_METHOD_TRANSFER) {
+          txDataParameters = methodParams
+          this.contractType = CONTRACT_TYPE_ERC721
+          this.isSpecialContract = true
+        } else if (contractParams.erc1155) {
+          txDataParameters = methodParams
+          this.contractType = CONTRACT_TYPE_ERC1155
+        } else if (contractParams.erc721) {
+          txDataParameters = methodParams
           this.contractType = CONTRACT_TYPE_ERC721
         } else if (contractParams.erc20) {
-          txDataParameters = tokenABI.find((item) => item.name && item.name.toLowerCase() === transactionCategory) || ''
+          txDataParameters = methodParams
           this.contractType = CONTRACT_TYPE_ERC20
         }
+
         // Get Params from method type ABI
         let amountTo
         let amountValue
         if (methodParams && Array.isArray(methodParams)) {
           if (transactionCategory === TOKEN_METHOD_TRANSFER_FROM || transactionCategory === COLLECTIBLE_METHOD_SAFE_TRANSFER_FROM) {
-            ;[amountTo, amountValue] = methodParams || []
+            ;[, amountTo, amountValue] = methodParams || []
           } else [amountTo, amountValue] = methodParams || []
         }
         log.info(methodParams, 'params')
@@ -643,28 +659,12 @@ export default {
         } else if (methodParams && contractParams.erc721) {
           log.info(methodParams, contractParams)
           this.isNonFungibleToken = true
-          let assetDetails = {}
-          try {
-            const url = `https://api.opensea.io/api/v1/asset/${checkSummedTo}/${this.amountValue}`
-            assetDetails = await get(
-              `${config.api}/opensea?url=${url}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${jwtToken}`,
-                },
-              },
-              { useAPIKey: true }
-            )
-            this.assetDetails = {
-              name: assetDetails.data.name || '',
-              logo: assetDetails.data.image_thumbnail_url || '',
-            }
-          } catch (error) {
-            log.info(error)
-          }
+        } else if (methodParams && contractParams.erc1155) {
+          log.info(methodParams, contractParams)
+          this.isNonFungibleToken = true
         }
         this.currencyRateDate = this.getDate()
-        this.receiver = to // address of receiver
+        this.receiver = this.amountTo
         this.value = finalValue // value of eth sending
         this.dollarValue = significantDigits(finalValue.times(this.currencyMultiplier))
         this.gasPrice = gweiGasPrice // gas price in gwei
@@ -684,10 +684,12 @@ export default {
         if (reason) {
           this.errorMsg = reason
           this.canShowError = true
+          window.$crisp.push(['do', 'chat:show'])
         }
         if (this.balance.lt(ethCost) && !this.canShowError) {
           this.errorMsg = 'dappTransfer.insufficientFunds'
           this.topUpErrorShow = true
+          window.$crisp.push(['do', 'chat:show'])
         }
       }
       this.type = type // type of tx
@@ -780,6 +782,7 @@ export default {
       if (this.balance.lt(ethCost) && !this.canShowError) {
         this.errorMsg = 'dappTransfer.insufficientFunds'
         this.topUpErrorShow = true
+        window.$crisp.push(['do', 'chat:show'])
       }
     },
     async decryptInline() {

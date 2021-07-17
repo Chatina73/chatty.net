@@ -1,9 +1,4 @@
 {
-  "editor.formatOnSave": false,
-  "editor.codeActionsOnSave": {
-    "source.fixAll": true
-  },
-  "vetur.validation.template": false,
   "eslint.options": {
     "extends": [
       "standard",
@@ -21,22 +16,29 @@
       "plugin:unicorn/recommended",
       "prettier"
     ],
-    "plugins": ["prettier", "vue", "babel", "promise", "import", "vue-scoped-css", "simple-import-sort", "switch-case", "unicorn"],
+    "plugins": ["prettier", "vue", "@babel", "promise", "import", "vue-scoped-css", "simple-import-sort", "switch-case", "unicorn"],
     "parser": "vue-eslint-parser",
     "parserOptions": {
-      "parser": "babel-eslint",
-      "ecmaVersion": 9,
-      "sourceType": "module"
+      "sourceType": "module",
+      "ecmaVersion": 11,
+      "parser": "@babel/eslint-parser",
+      "babelOptions": {
+        "configFile": "./babel.config.json"
+      }
     },
     "rules": {
+      "unicorn/require-post-message-target-origin": 0,
+      "unicorn/prefer-module": 0,
+      "unicorn/prefer-node-protocol": 0,
+      "unicorn/prefer-switch": 0,
       "unicorn/no-array-push-push": 0,
       "unicorn/no-this-assignment": 0,
       "unicorn/no-array-for-each": 0,
       "unicorn/consistent-destructuring": 0,
       "unicorn/prefer-regexp-test": 0,
       "unicorn/no-array-reduce": 0,
-      "unicorn/prefer-ternary": 0,
       "accessor-pairs": 0,
+      "unicorn/prefer-ternary": 0,
       "unicorn/prevent-abbreviations": 0,
       "unicorn/no-useless-undefined": 0,
       "unicorn/no-reduce": 0,
@@ -48,6 +50,7 @@
       "guard-for-in": 0,
       "no-underscore-dangle": 0,
       "simple-import-sort/imports": "error",
+      "simple-import-sort/exports": "error",
       "operator-linebreak": 0,
       "promise/always-return": 0,
       "unicorn/filename-case": 0,
@@ -118,10 +121,10 @@
       "es6": true,
       "browser": true,
       "node": true
+    },
+    "settings": {
+      "polyfills": ["BroadcastChannel"]
     }
   },
-  "eslint.lintTask.enable": true,
-  "eslint.format.enable": true,
-  "prettier.jsxBracketSameLine": true,
   "prettier.printWidth": 150
 }

@@ -1,9 +1,9 @@
+import { ObservableStore } from '@metamask/obs-store'
+import EventEmitter from '@metamask/safe-event-emitter'
 import clone from 'clone'
 import deepmerge from 'deepmerge'
 import { hashPersonalMessage } from 'ethereumjs-util'
 import log from 'loglevel'
-import ObservableStore from 'obs-store'
-import EventEmitter from 'safe-event-emitter'
 import Web3 from 'web3'
 
 import config from '../config'
@@ -17,12 +17,13 @@ import {
   BADGES_TOPUP,
   BADGES_TRANSACTION,
   ERROR_TIME,
+  ETHERSCAN_SUPPORTED_NETWORKS,
   SUCCESS_TIME,
   THEME_LIGHT_BLUE_NAME,
 } from '../utils/enums'
 import { notifyUser } from '../utils/notifications'
 import { setSentryEnabled } from '../utils/sentry'
-import { formatPastTx, getEthTxStatus, getIFrameOrigin, getUserLanguage, storageAvailable } from '../utils/utils'
+import { formatPastTx, getEthTxStatus, getIFrameOrigin, getUserLanguage, isMain, storageAvailable } from '../utils/utils'
 import { isErrorObject, prettyPrintData } from './utils/permissionUtils'
 
 // By default, poll every 3 minutes
@@ -82,6 +83,7 @@ class PreferencesController extends EventEmitter {
     this.errorStore = new ObservableStore('')
     this.successStore = new ObservableStore('')
     this.billboardStore = new ObservableStore({})
+    this.announcementsStore = new ObservableStore({})
   }
 
   headers(address) {
@@ -318,6 +320,8 @@ class PreferencesController extends EventEmitter {
     for (const x of txs) {
       if (
         x.network === this.network.getNetworkNameFromNetworkCode() &&
+        x.to &&
+        x.from &&
         (lowerCaseSelectedAddress === x.from.toLowerCase() || lowerCaseSelectedAddress === x.to.toLowerCase())
       ) {
         if (x.status !== 'confirmed') {
@@ -340,11 +344,11 @@ class PreferencesController extends EventEmitter {
     this.updateStore({ pastTransactions: pastTx }, address)
   }
 
-  async fetchEtherscanTx(address) {
+  async fetchEtherscanTx(address, network) {
     try {
-      const tx = await this.api.getEtherscanTransactions({ selectedAddress: address }, this.headers(address).headers)
+      const tx = await this.api.getEtherscanTransactions({ selectedAddress: address, selectedNetwork: network }, this.headers(address).headers)
       if (tx?.data) {
-        this.emit('addEtherscanTransactions', tx.data)
+        this.emit('addEtherscanTransactions', tx.data, network)
       }
     } catch (error) {
       log.error('unable to fetch etherscan tx', error)
@@ -389,6 +393,16 @@ class PreferencesController extends EventEmitter {
     const state = this.state(selectedAddress)
     if (!state?.fetchedPastTx) return
     this.calculatePastTx(state.fetchedPastTx, selectedAddress)
+  }
+
+  refetchEtherscanTx(address) {
+    const selectedAddress = address || this.store.getState().selectedAddress
+    if (this.state(selectedAddress)?.jwtToken) {
+      const selectedNetwork = this.network.getNetworkNameFromNetworkCode()
+      if (ETHERSCAN_SUPPORTED_NETWORKS.has(selectedNetwork)) {
+        this.fetchEtherscanTx(selectedAddress, selectedNetwork)
+      }
+    }
   }
 
   /* istanbul ignore next */
@@ -542,6 +556,11 @@ class PreferencesController extends EventEmitter {
     return this.api.get(`${config.api}/tokenbalances`, this.headers(address), { useAPIKey: true })
   }
 
+  async getCovalentTokenBalances(address, chainId) {
+    const api = `https://api.covalenthq.com/v1/${chainId}/address/${address}/balances_v2/`
+    return this.api.get(`${config.api}/covalent?url=${api}`, this.headers(), { useAPIKey: true })
+  }
+
   async getBillboardContents() {
     try {
       const { selectedAddress } = this.store.getState()
@@ -632,7 +651,10 @@ class PreferencesController extends EventEmitter {
     this.store.updateState({ selectedAddress: address })
     if (!Object.keys(this.store.getState()).includes(address)) return
     this.recalculatePastTx(address)
-    this.fetchEtherscanTx(address)
+    const selectedNetwork = this.network.getNetworkNameFromNetworkCode()
+    if (ETHERSCAN_SUPPORTED_NETWORKS.has(selectedNetwork)) {
+      this.fetchEtherscanTx(address, selectedNetwork)
+    }
     // this.sync()
   }
 
@@ -644,13 +666,14 @@ class PreferencesController extends EventEmitter {
     if (!interval) {
       return
     }
-    this._handle = setInterval(() => {
-      // call here
-      const storeSelectedAddress = this.store.getState().selectedAddress
-      if (!storeSelectedAddress) return
-      if (!this.state(storeSelectedAddress)?.jwtToken) return
-      this.sync(storeSelectedAddress)
-    }, interval)
+    if (isMain)
+      this._handle = setInterval(() => {
+        // call here
+        const storeSelectedAddress = this.store.getState().selectedAddress
+        if (!storeSelectedAddress) return
+        if (!this.state(storeSelectedAddress)?.jwtToken) return
+        this.sync(storeSelectedAddress)
+      }, interval)
   }
 
   async setUserBadge(payload) {
@@ -681,6 +704,15 @@ class PreferencesController extends EventEmitter {
   }
 
   /* istanbul ignore next */
+  async getCovalentNfts(api) {
+    return this.api.get(`${config.api}/covalent?url=${api}`, this.headers(), { useAPIKey: true })
+  }
+
+  async getNftMetadata(api) {
+    return this.api.get(`${config.api}/covalent?url=${api}`, this.headers(), { useAPIKey: true })
+  }
+
+  /* istanbul ignore next */
   async getOpenSeaCollectibles(api) {
     return this.api.get(`${config.api}/opensea?url=${api}`, this.headers(), { useAPIKey: true })
   }
@@ -694,6 +726,34 @@ class PreferencesController extends EventEmitter {
   /* istanbul ignore next */
   async sendEmail(payload) {
     return this.api.post(`${config.api}/transaction/sendemail`, payload.emailObject, this.headers(), { useAPIKey: true })
+  }
+
+  async getAnnouncementsContents() {
+    try {
+      const { selectedAddress } = this.store.getState()
+      if (!selectedAddress) return
+      const resp = await this.api.get(`${config.api}/announcements`, this.headers(), { useAPIKey: true })
+      const announcements = resp.data.reduce((accumulator, announcement) => {
+        if (!accumulator[announcement.locale]) accumulator[announcement.locale] = []
+        accumulator[announcement.locale].push(announcement)
+        return accumulator
+      }, {})
+
+      if (announcements) this.announcementsStore.putState(announcements)
+    } catch (error) {
+      log.error(error)
+    }
+  }
+
+  hideAnnouncement(payload, announcements) {
+    const { id } = payload
+    const newAnnouncements = Object.keys(announcements).reduce((accumulator, key) => {
+      const filtered = announcements[key].filter((x) => x.id !== id)
+      accumulator[key] = filtered
+      return accumulator
+    }, {})
+
+    if (newAnnouncements) this.announcementsStore.putState(newAnnouncements)
   }
 }
 

@@ -143,6 +143,12 @@ export default {
       apiKey: payload || 'torus-default',
     }
   },
+  setSkipTKey(state, payload) {
+    state.embedState = {
+      ...state.embedState,
+      skipTKey: payload || false,
+    }
+  },
   setButtonPosition(state, payload) {
     state.embedState = { ...state.embedState, buttonPosition: payload || 'bottom-left' }
   },
@@ -196,9 +202,6 @@ export default {
   setTKey(state, payload) {
     state.tKeyStore = payload
   },
-  setTkeyExists(state, payload) {
-    state.tKeyExists = payload
-  },
   addConfirmModal(state, payload) {
     state.confirmModals = [...state.confirmModals, payload]
   },
@@ -216,6 +219,12 @@ export default {
   },
   setIsTkeySeedPhraseInputRequired(state, payload) {
     state.isTkeySeedPhraseInputRequired = payload
+  },
+  setLoginInProgress(state, payload) {
+    state.embedState = { ...state.embedState, loginInProgress: payload }
+  },
+  setAnnouncements(state, payload) {
+    state.announcements = payload
   },
 }
 function localThemeSet(payload, state) {

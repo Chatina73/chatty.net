@@ -22,9 +22,6 @@ export default {
   sendEmail(_, payload) {
     return prefsController.sendEmail(payload)
   },
-  getOpenseaCollectibles(_, payload) {
-    return prefsController.getOpenSeaCollectibles(payload.tokenURI)
-  },
   setSuccessMessage(context, payload) {
     prefsController.handleSuccess(payload)
   },
@@ -72,8 +69,36 @@ export default {
         let typeName
         let typeImageLink
         let symbol
+        // debugger
+        if (contractParams.erc1155) {
+          ;[, amountTo, amountValue] = methodParams || []
 
-        if (contractParams.erc721) {
+          const { name = '', logo } = contractParams
+          // Get asset name of the 721
+          const selectedAddressAssets = state.assets[state.selectedAddress]
+          if (selectedAddressAssets) {
+            const contract = selectedAddressAssets.find((x) => x.address?.toLowerCase() === txParams.to?.toLowerCase()) || {}
+            log.info(contract, amountValue)
+            if (contract) {
+              const { name: foundAssetName } = (contract.assets || []).find((x) => x.tokenId?.toString() === amountValue?.value?.toString()) || {}
+              assetName = foundAssetName || ''
+              symbol = assetName
+              type = 'erc1155'
+              typeName = contract.name || name
+              typeImageLink = contract.logo || logo
+              totalAmount = fromWei(toBN(txParams.value || 0))
+              finalTo = amountTo && isAddress(amountTo.value) && toChecksumAddress(amountTo.value)
+            }
+          } else {
+            tokenRate = 1
+            symbol = state.networkType.ticker
+            type = 'eth'
+            typeName = state.networkType.ticker
+            typeImageLink = 'n/a'
+            totalAmount = fromWei(toBN(txParams.value || 0))
+            finalTo = toChecksumAddress(txParams.to)
+          }
+        } else if (contractParams.erc721) {
           // Handling cryptokitties
           if (contractParams.isSpecial) {
             ;[amountTo, amountValue] = methodParams || []
@@ -85,17 +110,30 @@ export default {
           // Get asset name of the 721
           const selectedAddressAssets = state.assets[state.selectedAddress]
           if (selectedAddressAssets) {
-            const contract = selectedAddressAssets.find((x) => x.address.toLowerCase() === txParams.to.toLowerCase()) || {}
+            const contract = selectedAddressAssets.find((x) => x.address?.toLowerCase() === txParams.to?.toLowerCase() || '') || {}
             log.info(contract, amountValue)
             if (contract) {
-              const { name: foundAssetName } = (contract.assets || []).find((x) => x.tokenId.toString() === amountValue.value.toString()) || {}
+              const { name: foundAssetName } = (contract.assets || []).find((x) => x.tokenId?.toString() === amountValue.value?.toString()) || {}
               assetName = foundAssetName || ''
               symbol = assetName
               type = 'erc721'
               typeName = contract.name || name
               typeImageLink = contract.logo || logo
               totalAmount = fromWei(toBN(txParams.value || 0))
-              finalTo = amountTo && isAddress(amountTo.value) && toChecksumAddress(amountTo.value)
+              finalTo =
+                transactionCategory === COLLECTIBLE_METHOD_SAFE_TRANSFER_FROM
+                  ? amountTo && isAddress(amountTo.value) && toChecksumAddress(amountTo.value)
+                  : toChecksumAddress(txParams.to)
+            } else {
+              // there might be a case when user has the asset but it is not present in state
+              // in that case we can record it as a contract interaction transaction.
+              tokenRate = 1
+              symbol = state.networkType.ticker
+              type = 'eth'
+              typeName = state.networkType.ticker
+              typeImageLink = 'n/a'
+              totalAmount = fromWei(toBN(txParams.value || 0))
+              finalTo = toChecksumAddress(txParams.to)
             }
           } else {
             tokenRate = 1
@@ -156,5 +194,9 @@ export default {
         prefsController.patchNewTx(txObject, state.selectedAddress)
       }
     }
+  },
+  hideAnnouncement({ state }, payload) {
+    const { announcements } = state
+    return prefsController.hideAnnouncement(payload, announcements)
   },
 }

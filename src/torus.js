@@ -13,6 +13,7 @@ class TorusExtended extends Torus {
     super()
     this.instanceId = randomId()
     this.setupMultiplex = setupMultiplex
+    this.openLogin = null
   }
 
   updateStaticData(payload) {

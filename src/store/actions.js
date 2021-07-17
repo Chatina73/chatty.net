@@ -9,7 +9,8 @@ import config from '../config'
 import { HandlerFactory as createHandler } from '../handlers/Auth'
 import PopupHandler from '../handlers/Popup/PopupHandler'
 import PopupWithBcHandler from '../handlers/Popup/PopupWithBcHandler'
-import vuetify from '../plugins/vuetify'
+import { getOpenLoginInstance } from '../openlogin'
+// import vuetify from '../plugins/vuetify'
 import router from '../router'
 import torus from '../torus'
 import accountImporter from '../utils/accountImporter'
@@ -28,6 +29,7 @@ import { remove } from '../utils/httpHelpers'
 import { fakeStream, getIFrameOriginObject, isMain } from '../utils/utils'
 import {
   accountTrackerHandler,
+  announcemenstHandler,
   assetControllerHandler,
   billboardHandler,
   detectTokensControllerHandler,
@@ -39,7 +41,6 @@ import {
   personalMessageManagerHandler,
   prefsControllerHandler,
   successMsgHandler as successMessageHandler,
-  tKeyHandler,
   tokenRatesControllerHandler,
   transactionControllerHandler,
   typedMessageManagerHandler,
@@ -64,7 +65,6 @@ const {
   prefsController,
   networkController,
   assetDetectionController,
-  thresholdKeyController,
   walletConnectController,
   encryptionPublicKeyManager,
   decryptMessageManager,
@@ -77,6 +77,7 @@ const oauthStream = communicationMux.getStream('oauth')
 const userInfoStream = communicationMux.getStream('user_info')
 const providerChangeStream = communicationMux.getStream('provider_change')
 const widgetStream = communicationMux.getStream('widget')
+const windowStream = communicationMux.getStream('window')
 
 const handleProviderChangeSuccess = () => {
   setTimeout(() => {
@@ -109,9 +110,11 @@ function resetStore(store, handler, initState) {
 
 export default {
   async logOut({ commit, state }, _) {
+    const { selectedAddress } = state
     commit('logOut', { ...initialState, networkType: state.networkType, networkId: state.networkId })
     // commit('setTheme', THEME_LIGHT_BLUE_NAME)
     // if (storageAvailable('sessionStorage')) window.sessionStorage.clear()
+
     statusStream.write({ loggedIn: false })
     resetStore(accountTracker.store, accountTrackerHandler)
     resetStore(txController.store, transactionControllerHandler)
@@ -125,16 +128,27 @@ export default {
     resetStore(prefsController.store, prefsControllerHandler, { selectedAddress: '' })
     resetStore(prefsController.successStore, successMessageHandler)
     resetStore(prefsController.errorStore, errorMessageHandler)
+    resetStore(prefsController.announcementsStore, announcemenstHandler)
     await walletConnectController.disconnect()
     resetStore(walletConnectController.store, walletConnectHandler, {})
     resetStore(txController.etherscanTxStore, etherscanTxHandler, [])
     resetStore(encryptionPublicKeyManager.store, encryptionPublicKeyHandler)
     resetStore(decryptMessageManager.store, unapprovedDecryptMsgsHandler)
-    resetStore(thresholdKeyController.store, tKeyHandler, {})
-    clearInterval(thresholdKeyController.requestStatusCheckId)
     assetDetectionController.stopAssetDetection()
     torus.updateStaticData({ isUnlocked: false })
-    if (isMain) router.push({ path: '/logout' }).catch(() => {})
+    if (isMain && selectedAddress) {
+      router.push({ path: '/logout' }).catch(() => {})
+      try {
+        const openLoginInstance = await getOpenLoginInstance()
+        if (openLoginInstance.state.support3PC) {
+          await openLoginInstance._syncState(await openLoginInstance._getData())
+          await openLoginInstance.logout({ clientId: config.openLoginClientId })
+        }
+      } catch (error) {
+        log.warn(error, 'unable to logout with openlogin')
+        window.location.href = '/'
+      }
+    }
   },
   setSelectedCurrency({ commit }, payload) {
     torusController.setCurrentCurrency(payload, (error, data) => {
@@ -160,11 +174,11 @@ export default {
   async forceFetchTokens({ state }) {
     detectTokensController.refreshTokenBalances()
     assetDetectionController.restartAssetDetection()
-    const { selectedAddress } = state
+    const { selectedAddress, networkType } = state
     try {
-      const response = await prefsController.getEtherScanTokenBalances(selectedAddress)
-      const { data } = response
-      detectTokensController.detectEtherscanTokenBalance(data, selectedAddress)
+      const response = await prefsController.getCovalentTokenBalances(selectedAddress, networkType.chainId)
+      const data = response?.data?.data?.items || []
+      detectTokensController.detectCovalentTokenBalance(data, selectedAddress, networkType)
     } catch {
       log.error('etherscan balance fetch failed')
     }
@@ -195,7 +209,6 @@ export default {
           payload,
           currentNetwork: state.networkType,
           whiteLabel: state.whiteLabel,
-          tKeyExists: state.tKeyExists,
         },
       })
       const { approve = false } = result
@@ -329,13 +342,16 @@ export default {
     else await dispatch('setSelectedCurrency', { selectedCurrency: state.selectedCurrency, origin: 'store' })
     return undefined
   },
-  async triggerLogin({ dispatch, commit, state }, { calledFromEmbed, verifier, preopenInstanceId }) {
+  async triggerLogin({ dispatch, commit, state }, { calledFromEmbed, verifier, preopenInstanceId, login_hint }) {
     try {
+      commit('setLoginInProgress', true)
       // This is to maintain backward compatibility
       const currentVeriferConfig = state.embedState.loginConfig[verifier]
-      const locale = vuetify.framework.lang.current
+      const { whiteLabel } = state
+      // const locale = vuetify.framework.lang.current
       if (!currentVeriferConfig) throw new Error('Invalid verifier')
-      const { typeOfLogin, clientId, jwtParameters } = currentVeriferConfig
+      const { typeOfLogin, clientId, jwtParameters, loginProvider } = currentVeriferConfig
+      log.info('starting login', { calledFromEmbed, verifier, preopenInstanceId, login_hint })
       const loginHandler = createHandler({
         typeOfLogin,
         clientId,
@@ -344,38 +360,45 @@ export default {
         preopenInstanceId,
         jwtParameters: deepmerge(
           {
-            ui_locales: locale,
-            languageDictionary: JSON.stringify({
-              title: vuetify.framework.lang.t('$vuetify.walletHome.auth0Title') || '',
-              error: {
-                passwordless: {
-                  invalid_user_password: vuetify.framework.lang.t('$vuetify.login.invalid_user_password') || '',
-                },
-              },
-            }),
+            login_hint,
+            // ui_locales: locale,
+            // languageDictionary: JSON.stringify({
+            //   title: vuetify.framework.lang.t('$vuetify.walletHome.auth0Title') || '',
+            //   error: {
+            //     passwordless: {
+            //       invalid_user_password: vuetify.framework.lang.t('$vuetify.login.invalid_user_password') || '',
+            //     },
+            //   },
+            // }),
           },
           jwtParameters || {}
         ),
+        skipTKey: state.embedState.skipTKey,
+        whiteLabel,
+        loginProvider,
       })
-      const loginParameters = await loginHandler.handleLoginWindow()
-      const { accessToken, idToken } = loginParameters
-      const userInfo = await loginHandler.getUserInfo(loginParameters)
-      const { profileImage, name, email, verifierId, typeOfLogin: returnTypeOfLogin } = userInfo
-      commit('setUserInfo', {
-        profileImage,
-        name,
-        email,
-        verifierId,
-        verifier,
-        verifierParams: { verifier_id: verifierId },
-        typeOfLogin: returnTypeOfLogin,
+      const { keys, userInfo, postboxKey } = await loginHandler.handleLoginWindow()
+      // Get all open login results
+      userInfo.verifier = verifier
+      commit('setUserInfo', userInfo)
+      commit('setPostboxKey', postboxKey)
+      await dispatch('handleLogin', {
+        calledFromEmbed,
+        oAuthToken: userInfo.idToken || userInfo.accessToken,
+        keys,
       })
-      await dispatch('handleLogin', { calledFromEmbed, oAuthToken: idToken || accessToken })
     } catch (error) {
       log.error(error)
       oauthStream.write({ err: { message: error.message } })
       commit('setOAuthModalStatus', false)
+      if (preopenInstanceId)
+        windowStream.write({
+          preopenInstanceId,
+          close: true,
+        })
       throw error
+    } finally {
+      commit('setLoginInProgress', false)
     }
   },
   subscribeToControllers() {
@@ -392,8 +415,8 @@ export default {
     prefsController.errorStore.subscribe(errorMessageHandler)
     prefsController.billboardStore.subscribe(billboardHandler)
     prefsController.store.subscribe(prefsControllerHandler)
+    prefsController.announcementsStore.subscribe(announcemenstHandler)
     txController.etherscanTxStore.subscribe(etherscanTxHandler)
-    thresholdKeyController.store.subscribe(tKeyHandler)
     walletConnectController.store.subscribe(walletConnectHandler)
     encryptionPublicKeyManager.store.subscribe(encryptionPublicKeyHandler)
     decryptMessageManager.store.subscribe(unapprovedDecryptMsgsHandler)
@@ -422,67 +445,22 @@ export default {
       })
     )
   },
-  async handleLogin({ state, dispatch, commit }, { calledFromEmbed, oAuthToken }) {
+  async handleLogin({ state, dispatch, commit }, { calledFromEmbed, oAuthToken, keys }) {
     // The error in this is caught above
     const {
-      userInfo: { verifierId, verifier, verifierParams },
+      userInfo: { verifier },
     } = state
 
-    const defaultAddresses = []
-    let oAuthKey = {}
     dispatch('subscribeToControllers')
 
-    const promises = []
-
-    if (!config.onlyTkey) {
-      const p1 = async () => {
-        oAuthKey = await dispatch('getTorusKey', { verifier, verifierId, verifierParams, oAuthToken })
-        // log.info('key 1', oAuthKey)
-
-        defaultAddresses.push(
-          ...(await dispatch('initTorusKeyring', {
-            keys: [{ ...oAuthKey, accountType: ACCOUNT_TYPE.NORMAL }],
-            calledFromEmbed,
-            rehydrate: false,
-          }))
-        )
-      }
-      promises.push(p1())
-    }
-
-    promises.push(dispatch('calculatePostboxKey', { oAuthToken }))
-    await Promise.all(promises)
-    // Threshold Bak region
-    // Check if tkey exists
-    const { status: keyExists, share } = await thresholdKeyController.checkIfTKeyExists(state.postboxKey.privateKey)
-    // if in iframe && keyExists, initialize tkey only if it's set as default address
-    // if not in iframe && keyExists, initialize tkey always
-    // inside an iframe
-    commit('setTkeyExists', keyExists)
-    if (keyExists) {
-      if (!isMain) {
-        if (defaultAddresses[0] && defaultAddresses[0] !== oAuthKey.ethAddress) {
-          // Do tkey
-          defaultAddresses.push(...(await dispatch('addTKey', { calledFromEmbed, share })))
-        } else if (config.onlyTkey) {
-          defaultAddresses.push(...(await dispatch('addTKey', { calledFromEmbed, share })))
-        }
-      } else {
-        // In app.tor.us
-        defaultAddresses.push(...(await dispatch('addTKey', { calledFromEmbed, share })))
-      }
-    } else if (config.onlyTkey && !keyExists) {
-      if (!isMain) dispatch('showWalletPopup', { path: 'tkey' })
-      else {
-        router.push({ path: 'tkey' }).catch((_) => {})
-      }
-      throw new Error('User has no account')
-    }
+    const defaultAddresses = await dispatch('initTorusKeyring', {
+      keys,
+      calledFromEmbed,
+      rehydrate: false,
+    })
 
     const selectedDefaultAddress = defaultAddresses[0] || defaultAddresses[1]
-    const selectedAddress = Object.keys(state.wallet).includes(selectedDefaultAddress)
-      ? selectedDefaultAddress
-      : oAuthKey.ethAddress || Object.keys(state.wallet)[0]
+    const selectedAddress = Object.keys(state.wallet).includes(selectedDefaultAddress) ? selectedDefaultAddress : Object.keys(state.wallet)[0]
 
     if (!selectedAddress) {
       dispatch('logOut')
@@ -490,6 +468,7 @@ export default {
     }
     dispatch('updateSelectedAddress', { selectedAddress }) // synchronous
     prefsController.getBillboardContents()
+    prefsController.getAnnouncementsContents()
     // continue enable function
     if (calledFromEmbed) {
       setTimeout(() => {
@@ -502,26 +481,19 @@ export default {
     torus.updateStaticData({ isUnlocked: true })
     dispatch('cleanupOAuth', { oAuthToken })
   },
-  async getTorusKey(_, { verifier, verifierId, verifierParams, oAuthToken }) {
-    if (!verifier) throw new Error('Verifier is required')
-    const { torusNodeEndpoints, torusNodePub, torusIndexes } = await torus.nodeDetailManager.getNodeDetails()
-    const publicAddress = await torus.getPublicAddress(torusNodeEndpoints, torusNodePub, { verifier, verifierId })
-    log.info('New private key assigned to user at address ', publicAddress)
-    const torusKey = await torus.retrieveShares(torusNodeEndpoints, torusIndexes, verifier, verifierParams, oAuthToken)
-    if (publicAddress.toLowerCase() !== torusKey.ethAddress.toLowerCase()) throw new Error('Invalid Key')
-    return torusKey
-  },
   cleanupOAuth({ state }, payload) {
     const {
       userInfo: { typeOfLogin },
     } = state
     const { oAuthToken } = payload
-    if (typeOfLogin === FACEBOOK) {
-      remove(`https://graph.facebook.com/me/permissions?access_token=${oAuthToken}`)
-        .then((resp) => log.info(resp))
-        .catch((error) => log.error(error))
-    } else if (typeOfLogin === DISCORD) {
-      prefsController.revokeDiscord(oAuthToken)
+    if (oAuthToken) {
+      if (typeOfLogin === FACEBOOK) {
+        remove(`https://graph.facebook.com/me/permissions?access_token=${oAuthToken}`)
+          .then((resp) => log.info(resp))
+          .catch((error) => log.error(error))
+      } else if (typeOfLogin === DISCORD) {
+        prefsController.revokeDiscord(oAuthToken)
+      }
     }
   },
   async rehydrate({ state, dispatch, commit }) {
@@ -532,7 +504,6 @@ export default {
       networkId,
       jwtToken,
       userInfo: { verifier },
-      tKeyStore,
       wcConnectorSession,
     } = state
     try {
@@ -554,10 +525,6 @@ export default {
         calledFromEmbed: false,
         rehydrate: true,
       })
-      if (Object.keys(tKeyStore).length > 0) {
-        const postboxWallet = state.postboxKey
-        if (postboxWallet && tKeyStore.tKey) await thresholdKeyController.rehydrate(postboxWallet?.privateKey, tKeyStore.tKey)
-      }
       if (selectedAddress && wallet[selectedAddress]) {
         dispatch('updateSelectedAddress', { selectedAddress }) // synchronous
         dispatch('updateNetworkId', { networkId })

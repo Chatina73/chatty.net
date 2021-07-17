@@ -5,7 +5,7 @@ import Web3 from 'web3'
 
 import TorusController from './controllers/TorusController'
 import setupMultiplex from './controllers/utils/setupMultiplex'
-import { MAINNET, MAINNET_CODE, MAINNET_DISPLAY_NAME, REQUEST_TKEY_SEED_PHRASE_INPUT, REQUREST_TKEY_INPUT } from './utils/enums'
+import { MAINNET, MAINNET_CODE, MAINNET_DISPLAY_NAME } from './utils/enums'
 import { getIFrameOrigin, isMain, isPwa, storageAvailable } from './utils/utils'
 // import store from './store'
 let storeReference
@@ -33,11 +33,6 @@ function triggerUi(type, payload, request) {
   getStore().dispatch('showPopup', { payload, request })
 }
 
-function triggerThresholdUi(type, payload) {
-  log.info(`TRIGGER THRESHOLD UI:${type}`, payload)
-  getStore().dispatch('showThresholdKeyUi', { type, data: payload })
-}
-
 function onloadTorus(torus) {
   let sessionData
 
@@ -58,8 +53,6 @@ function onloadTorus(torus) {
     unlockAccountMessage: triggerUi.bind(window, 'unlockAccountMessage'),
     showUnapprovedTx: triggerUi.bind(window, 'showUnapprovedTx'),
     openPopup: triggerUi.bind(window, 'bindopenPopup'),
-    requestTkeyInput: triggerThresholdUi.bind(window, REQUREST_TKEY_INPUT),
-    requestTkeySeedPhraseInput: triggerThresholdUi.bind(window, REQUEST_TKEY_SEED_PHRASE_INPUT),
     storeProps: () => {
       const { state } = getStore()
       const { selectedAddress, wallet } = state || {}
@@ -77,10 +70,7 @@ function onloadTorus(torus) {
   torus.web3 = new Web3(torusController.provider)
 
   torus.nodeDetailManager = new NodeDetailManager({ network: process.env.VUE_APP_PROXY_NETWORK, proxyAddress: process.env.VUE_APP_PROXY_ADDRESS })
-  torus.nodeDetailManager
-    .getNodeDetails()
-    .then((nodeDetails) => log.info(nodeDetails))
-    .catch((error) => log.error(error))
+  log.info('torus network', process.env.VUE_APP_PROXY_NETWORK)
 
   // we use this to start accounttracker balances
   torusController.setupControllerConnection()

@@ -1,6 +1,7 @@
+import { ObservableStore, storeAsStream } from '@metamask/obs-store'
 import createFilterMiddleware from 'eth-json-rpc-filters'
 import createSubscriptionManager from 'eth-json-rpc-filters/subscriptionManager'
-import providerAsMiddleware from 'eth-json-rpc-middleware/providerAsMiddleware'
+import { providerAsMiddleware } from 'eth-json-rpc-middleware'
 import { normalize } from 'eth-sig-util'
 import { stripHexPrefix } from 'ethereumjs-util'
 import EventEmitter from 'events'
@@ -8,13 +9,12 @@ import { JsonRpcEngine } from 'json-rpc-engine'
 import { createEngineStream } from 'json-rpc-middleware-stream'
 import debounce from 'lodash.debounce'
 import log from 'loglevel'
-import ObservableStore from 'obs-store'
-import asStream from 'obs-store/lib/asStream'
 import pump from 'pump'
 import { toChecksumAddress } from 'web3-utils'
 
 import { version } from '../../package.json'
 import createRandomId from '../utils/random-id'
+import { isMain } from '../utils/utils'
 import AccountTracker from './AccountTracker'
 import AssetContractController from './AssetsContractController'
 import AssetController from './AssetsController'
@@ -28,7 +28,6 @@ import NetworkController from './NetworkController'
 import PermissionsController from './PermissionsController'
 import PersonalMessageManager from './PersonalMessageManager'
 import PreferencesController from './PreferencesController'
-import ThresholdKeyController from './ThresholdKeyController'
 import TokenRatesController from './TokenRatesController'
 import KeyringController from './TorusKeyring'
 import TransactionController from './TransactionController'
@@ -120,6 +119,7 @@ export default class TorusController extends EventEmitter {
       this.detectTokensController.restartTokenDetection()
       this.assetDetectionController.restartAssetDetection()
       this.prefsController.recalculatePastTx()
+      this.prefsController.refetchEtherscanTx()
       this.walletConnectController.updateSession()
     })
 
@@ -153,29 +153,24 @@ export default class TorusController extends EventEmitter {
       }
     })
 
+    this.assetContractController = new AssetContractController({
+      provider: this.provider,
+    })
+
     // Asset controllers
     this.assetController = new AssetController({
       network: this.networkController,
       provider: this.provider,
-      getOpenSeaCollectibles: this.prefsController.getOpenSeaCollectibles.bind(this.prefsController),
-    })
-
-    this.assetContractController = new AssetContractController({
-      provider: this.provider,
+      getNftMetadata: this.prefsController.getNftMetadata.bind(this.prefsController),
+      assetContractController: this.assetContractController,
     })
 
     this.assetDetectionController = new AssetDetectionController({
       network: this.networkController,
       provider: this.provider,
       assetController: this.assetController,
-      assetContractController: this.assetContractController,
+      getCovalentNfts: this.prefsController.getCovalentNfts.bind(this.prefsController),
       getOpenSeaCollectibles: this.prefsController.getOpenSeaCollectibles.bind(this.prefsController),
-    })
-
-    this.thresholdKeyController = new ThresholdKeyController({
-      requestTkeyInput: this.opts.requestTkeyInput.bind(this.thresholdKeyController),
-      requestTkeySeedPhraseInput: this.opts.requestTkeySeedPhraseInput.bind(this.thresholdKeyController),
-      provider: this.provider,
     })
 
     this.networkController.lookupNetwork()
@@ -205,8 +200,8 @@ export default class TorusController extends EventEmitter {
       }, 50)
     }
 
-    this.prefsController.on('addEtherscanTransactions', (txs) => {
-      this.txController.addEtherscanTransactions(txs)
+    this.prefsController.on('addEtherscanTransactions', (txs, network) => {
+      this.txController.addEtherscanTransactions(txs, network)
     })
 
     this.walletConnectController = new WalletConnectController({
@@ -356,9 +351,11 @@ export default class TorusController extends EventEmitter {
 
   setSelectedAccount(address) {
     this.prefsController.setSelectedAddress(address)
-    this.detectTokensController.startTokenDetection(address)
-    this.assetDetectionController.startAssetDetection(address)
-    this.walletConnectController.setSelectedAddress(address)
+    if (isMain) {
+      this.detectTokensController.startTokenDetection(address)
+      this.assetDetectionController.startAssetDetection(address)
+      this.walletConnectController.setSelectedAddress(address)
+    }
   }
 
   /**
@@ -743,7 +740,7 @@ export default class TorusController extends EventEmitter {
    * @param {*} outStream - The stream to provide public config over.
    */
   setupPublicConfig(outStream) {
-    const configStream = asStream(this.publicConfigStore)
+    const configStream = storeAsStream(this.publicConfigStore)
     pump(configStream, outStream, (error) => {
       configStream.destroy()
       if (error) log.error(error)

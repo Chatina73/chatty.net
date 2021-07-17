@@ -1,7 +1,8 @@
 import { BroadcastChannel } from 'broadcast-channel'
+import log from 'loglevel'
 
 import { POPUP_LOADED, POPUP_RESULT } from '../../utils/enums'
-import { broadcastChannelOptions } from '../../utils/utils'
+import { broadcastChannelOptions, UserError } from '../../utils/utils'
 import PopupHandler from './PopupHandler'
 
 class PopupWithBcHandler extends PopupHandler {
@@ -14,9 +15,10 @@ class PopupWithBcHandler extends PopupHandler {
     return new Promise((resolve, reject) => {
       this.once('close', () => {
         this.bc.close()
-        reject(new Error('user closed popup'))
+        reject(new UserError('user closed popup'))
       })
       this.bc.addEventListener('message', async (ev) => {
+        log.info(ev, 'receiving')
         try {
           const { error, data } = ev
           if (error) {
@@ -40,7 +42,7 @@ class PopupWithBcHandler extends PopupHandler {
     return new Promise((resolve, reject) => {
       this.once('close', () => {
         this.bc.close()
-        reject(new Error('user closed popup'))
+        reject(new UserError('user closed popup'))
       })
       this.bc.addEventListener('message', async (ev) => {
         try {

@@ -44,7 +44,6 @@ const initialState = {
   unapprovedDecryptMsgs: {},
   // preferences
   tKeyOnboardingComplete: true,
-  tKeyExists: false,
   defaultPublicAddress: '',
   selectedAddress: '',
   supportedNetworks: { ...SUPPORTED_NETWORK_TYPES },
@@ -55,6 +54,7 @@ const initialState = {
   crashReport: true,
   locale: LOCALE_EN,
   billboard: {},
+  announcements: {},
   contacts: [],
   permissions: [],
   userInfoAccess: USER_INFO_REQUEST_NEW, // deprecate
@@ -67,6 +67,8 @@ const initialState = {
     buttonPosition: 'bottom-left',
     torusWidgetVisibility: true,
     apiKey: 'torus-default',
+    skipTKey: false,
+    loginInProgress: false,
   },
   whiteLabel: {
     isActive: false,

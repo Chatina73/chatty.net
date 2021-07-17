@@ -1,9 +1,3 @@
-import { SECURITY_QUESTIONS_MODULE_NAME } from '@tkey/security-questions'
-import { SEED_PHRASE_MODULE_NAME } from '@tkey/seed-phrase'
-import { SHARE_SERIALIZATION_MODULE_NAME } from '@tkey/share-serialization'
-import { SHARE_TRANSFER_MODULE_NAME } from '@tkey/share-transfer'
-import { WEB_STORAGE_MODULE_NAME } from '@tkey/web-storage'
-
 export const ETH = 'eth'
 
 export const PLATFORM_BRAVE = 'Brave'
@@ -36,7 +30,7 @@ export const RINKEBY_CODE = 4
 export const KOVAN_CODE = 42
 export const GOERLI_CODE = 5
 export const MATIC_CODE = 137
-export const MUMBAI_CODE = 80001
+export const MUMBAI_CODE = 80_001
 export const LOCALHOST_CODE = 5777
 export const BSC_MAINNET_CODE = 56
 export const BSC_TESTNET_CODE = 97
@@ -52,7 +46,13 @@ export const MUMBAI_CHAIN_ID = '0x13881'
 export const BSC_MAINNET_CHAIN_ID = '0x38'
 export const BSC_TESTNET_CHAIN_ID = '0x61'
 export const XDAI_CHAIN_ID = '0x64'
-
+export const NFT_SUPPORTED_NETWORKS = {
+  [MATIC]: MATIC_CODE,
+  [MUMBAI]: MUMBAI_CODE,
+  [BSC_MAINNET]: BSC_MAINNET_CODE,
+  [MAINNET]: MAINNET_CODE,
+}
+export const ETHERSCAN_SUPPORTED_NETWORKS = new Set([MATIC, BSC_MAINNET, MAINNET])
 export const ROPSTEN_DISPLAY_NAME = 'Ropsten Test Network'
 export const RINKEBY_DISPLAY_NAME = 'Rinkeby Test Network'
 export const KOVAN_DISPLAY_NAME = 'Kovan Test Network'
@@ -66,10 +66,10 @@ export const BSC_MAINNET_DISPLAY_NAME = 'Binance Smart Chain Mainnet'
 export const BSC_TESTNET_DISPLAY_NAME = 'Binance Smart Chain Testnet'
 export const XDAI_DISPLAY_NAME = 'xDai'
 
-export const MATIC_URL = 'https://rpc-mainnet.matic.network'
-export const MATIC_BLOCK_EXPLORER = 'https://explorer.matic.network'
+export const MATIC_URL = 'https://rpc-mainnet.maticvigil.com'
+export const MATIC_BLOCK_EXPLORER = 'https://explorer-mainnet.maticvigil.com'
 
-export const MUMBAI_URL = 'https://rpc-mumbai.matic.today'
+export const MUMBAI_URL = 'https://rpc-mumbai.maticvigil.com'
 export const MUMBAI_BLOCK_EXPLORER = 'https://mumbai-explorer.matic.today'
 
 export const XDAI_URL = 'https://rpc.xdaichain.com'
@@ -110,6 +110,9 @@ export const DEPLOY_CONTRACT_ACTION_KEY = 'contractDeployment'
 export const CONTRACT_INTERACTION_KEY = 'contractInteraction'
 
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+export const ERC1155_INTERFACE_ID = '0xd9b67a26'
+export const ERC721_INTERFACE_ID = '0x80ac58cd'
+export const ERC1155METADATA_INTERFACE_ID = '0x0e89341c'
 export const ERC721METADATA_INTERFACE_ID = '0x5b5e139f'
 export const ERC721ENUMERABLE_INTERFACE_ID = '0x780e9d63'
 export const SINGLE_CALL_BALANCES_ADDRESS = '0xb1f8e55c7f64d203c1400b9d8555d050f94adf39'
@@ -124,6 +127,8 @@ export const USER_INFO_REQUEST_NEW = 'user_info_request_new'
 export const CONTRACT_TYPE_ETH = 'eth'
 export const CONTRACT_TYPE_ERC20 = 'erc20'
 export const CONTRACT_TYPE_ERC721 = 'erc721'
+export const CONTRACT_TYPE_ERC1155 = 'erc1155'
+export const SUPPORTED_NFT_STANDARDS = new Set([CONTRACT_TYPE_ERC1155, CONTRACT_TYPE_ERC721])
 
 export const getInfuraBlockExplorerUrl = (network) => {
   if (network === MAINNET) return 'https://etherscan.io'
@@ -244,6 +249,21 @@ export const LINE_LINKED_VERIFIER = process.env.VUE_APP_LINE_LINKED_VERIFIER
 export const APPLE_LINKED_VERIFIER = process.env.VUE_APP_APPLE_LINKED_VERIFIER
 export const HOSTED_EMAIL_PASSWORDLESS_LINKED_VERIFIER = process.env.VUE_APP_HOSTED_EMAIL_PASSWORDLESS_LINKED_VERIFIER
 
+export const GOOGLE_LOGIN_PROVIDER = 'google'
+export const FACEBOOK_LOGIN_PROVIDER = 'facebook'
+export const REDDIT_LOGIN_PROVIDER = 'reddit'
+export const DISCORD_LOGIN_PROVIDER = 'discord'
+export const TWITCH_LOGIN_PROVIDER = 'twitch'
+export const APPLE_LOGIN_PROVIDER = 'apple'
+export const LINE_LOGIN_PROVIDER = 'line'
+export const GITHUB_LOGIN_PROVIDER = 'github'
+export const KAKAO_LOGIN_PROVIDER = 'kakao'
+export const LINKEDIN_LOGIN_PROVIDER = 'linkedin'
+export const TWITTER_LOGIN_PROVIDER = 'twitter'
+export const WEIBO_LOGIN_PROVIDER = 'weibo'
+export const WECHAT_LOGIN_PROVIDER = 'wechat'
+export const EMAIL_PASSWORDLESS_LOGIN_PROVIDER = 'email_passwordless'
+
 export const LINKED_VERIFIER_SUBIDENTIFIER = process.env.VUE_APP_LINKED_VERIFIER_SUBIDENTIFIER
 
 export const ENS = 'ENS'
@@ -267,25 +287,6 @@ export const ACCOUNT_TYPE = {
   NORMAL: 'normal',
   THRESHOLD: 'threshold',
   IMPORTED: 'imported',
-  TKEY_SEED_PHRASE: 'tkey_seed_phrase',
-}
-
-export const REQUEST_TKEY_SEED_PHRASE_INPUT = 'requestTkeySeedPhraseInput'
-export const REQUREST_TKEY_INPUT = 'requestTkeyInput'
-
-export const WEB_STORAGE_MODULE_KEY = WEB_STORAGE_MODULE_NAME
-export const SECURITY_QUESTIONS_MODULE_KEY = SECURITY_QUESTIONS_MODULE_NAME
-export const SHARE_SERIALIZATION_MODULE_KEY = SHARE_SERIALIZATION_MODULE_NAME
-export const CHROME_EXTENSION_STORAGE_MODULE_KEY = 'chromeExtensionStorage'
-export const SHARE_TRANSFER_MODULE_KEY = SHARE_TRANSFER_MODULE_NAME
-export const SEED_PHRASE_MODULE_KEY = SEED_PHRASE_MODULE_NAME
-export const PASSWORD_QUESTION = 'what is your password?'
-export const THRESHOLD_KEY_PRIORITY_ORDER = [WEB_STORAGE_MODULE_KEY, SECURITY_QUESTIONS_MODULE_KEY, CHROME_EXTENSION_STORAGE_MODULE_KEY]
-export const TKEY_SHARE_TRANSFER_INTERVAL = 5000
-
-export const STORAGE_MAP = {
-  [WEB_STORAGE_MODULE_KEY]: 'Web Storage',
-  [CHROME_EXTENSION_STORAGE_MODULE_KEY]: 'Chrome Extension',
 }
 
 export const OLD_ERC721_LIST = {
